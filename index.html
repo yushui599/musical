@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>一周课表</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background: #eef1f6;
+            color: #222;
+            padding-bottom: 88px; /* 给底部工具栏留位置 */
+        }
+
+        /* ========== 课表 ========== */
+        .table-wrap {
+            background: #fff;
+            max-width: 1200px;
+            margin: 0 auto;
+            box-shadow: 0 4px 24px rgba(0,0,0,.07);
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        thead th {
+            background: linear-gradient(135deg,#667eea,#764ba2);
+            color: #fff;
+            padding: 11px 8px;
+            font-size: 0.95em;
+            font-weight: 600;
+            letter-spacing: .5px;
+            border-right: 1px solid rgba(255,255,255,.15);
+            position: sticky;
+            top: 0;
+            z-index: 20;
+        }
+        thead th:last-child { border-right: none; }
+
+        thead th .sub {
+            display: block;
+            font-size: .76em;
+            font-weight: 400;
+            opacity: .85;
+            margin-top: 2px;
+        }
+
+        thead th:first-child {
+            width: 92px;
+            background: #2d3748;
+            z-index: 21;
+        }
+
+        tbody td {
+            border: 1px solid #edf0f5;
+            padding: 0;
+            vertical-align: top;
+        }
+
+        /* 节次列 */
+        .period-cell {
+            background: #f7f9fc;
+            text-align: center;
+            vertical-align: middle;
+            padding: 6px 4px !important;
+            border-right: 2px solid #e9edf4 !important;
+        }
+        .period-cell .p-name {
+            display: block;
+            font-size: 0.86em;
+            font-weight: 700;
+            color: #4a5568;
+        }
+        .period-cell .p-time {
+            display: block;
+            font-size: 0.68em;
+            color: #a0aec0;
+            margin-top: 3px;
+            line-height: 1.35;
+        }
+
+        /* 可编辑格子 */
+        .cell {
+            min-height: 74px;
+            padding: 8px 10px;
+            cursor: text;
+            transition: background .15s;
+            outline: none;
+            font-size: 0.88em;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #2d3748;
+        }
+
+        .cell:empty::before {
+            content: attr(data-empty);
+            color: #cbd5e0;
+            font-size: .9em;
+            pointer-events: none;
+        }
+
+        .cell:hover { background: #f7faff; }
+
+        .cell:focus {
+            background: #eef3ff;
+            box-shadow: inset 0 0 0 2px #667eea;
+        }
+
+        .cell.has-class { background: #f4f7ff; }
+
+        /* 今天高亮 */
+        .today-col { background: #fffbeb !important; }
+        .today-col .cell { background: #fffdf5; }
+        .today-col .cell:hover { background: #fffbe8; }
+        .today-col .cell.has-class { background: #fff8e1; }
+
+        /* ========== 底部工具栏 ========== */
+        .bottom-bar {
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,.96);
+            backdrop-filter: blur(12px);
+            border-top: 1px solid #e6ebf2;
+            box-shadow: 0 -4px 22px rgba(0,0,0,.07);
+            z-index: 200;
+            padding: 10px 16px;
+            padding-bottom: calc(10px + env(safe-area-inset-bottom));
+        }
+
+        .bottom-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .save-state {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: .8em;
+            color: #a0aec0;
+            margin-right: auto;
+            white-space: nowrap;
+        }
+        .save-state .dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: #48bb78;
+        }
+        .save-state.flash .dot { background: #667eea; }
+
+        button {
+            font-family: inherit;
+            cursor: pointer;
+            border: none;
+            border-radius: 9px;
+            padding: 9px 15px;
+            font-size: 0.9em;
+            font-weight: 600;
+            transition: all .18s;
+            white-space: nowrap;
+        }
+
+        .btn-ghost {
+            background: #f1f4f9;
+            color: #4a5568;
+        }
+        .btn-ghost:hover { background: #e6ebf3; color: #667eea; }
+
+        .btn-danger { background: #fff1f1; color: #e53e3e; }
+        .btn-danger:hover { background: #ffe3e3; }
+
+        .btn-primary {
+            background: linear-gradient(135deg,#667eea,#764ba2);
+            color: #fff;
+            padding: 9px 20px;
+            box-shadow: 0 3px 12px rgba(102,126,234,.35);
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 5px 18px rgba(102,126,234,.45);
+        }
+        .btn-primary:active { transform: translateY(0) scale(.98); }
+
+        /* ========== Toast ========== */
+        .toast {
+            position: fixed;
+            left: 50%;
+            bottom: 104px;
+            transform: translate(-50%, 16px);
+            background: #2d3748;
+            color: #fff;
+            padding: 11px 22px;
+            border-radius: 30px;
+            font-size: .9em;
+            opacity: 0;
+            pointer-events: none;
+            transition: all .26s;
+            z-index: 999;
+            box-shadow: 0 8px 24px rgba(0,0,0,.22);
+            max-width: 90vw;
+            text-align: center;
+        }
+        .toast.show { opacity: 1; transform: translate(-50%, 0); }
+        .toast.ok { background: linear-gradient(135deg,#38a169,#48bb78); }
+        .toast.err { background: linear-gradient(135deg,#e53e3e,#f56565); }
+
+        /* ========== 预览弹窗 ========== */
+        .modal-bg {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal-bg.active { display: flex; }
+
+        .modal {
+            background: #fff;
+            border-radius: 16px;
+            padding: 22px;
+            width: 100%;
+            max-width: 560px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            animation: pop .26s ease;
+        }
+        @keyframes pop {
+            from { transform: scale(.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .modal h3 { font-size: 1.05em; color: #2d3748; margin-bottom: 12px; }
+
+        .modal textarea {
+            flex: 1;
+            min-height: 320px;
+            width: 100%;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 12px;
+            font-family: 'SFMono-Regular', Consolas, monospace;
+            font-size: .84em;
+            line-height: 1.7;
+            resize: none;
+            outline: none;
+            color: #2d3748;
+            background: #f8fafc;
+        }
+
+        .modal-btns {
+            display: flex;
+            gap: 10px;
+            margin-top: 14px;
+        }
+        .modal-btns button { flex: 1; padding: 11px; }
+
+        /* ========== 打印 ========== */
+        @media print {
+            body { background: #fff; padding: 0; }
+            .bottom-bar, .toast, .modal-bg { display: none !important; }
+            .table-wrap { box-shadow: none; }
+            thead th { position: static; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .cell { min-height: 58px; }
+        }
+
+        /* ========== 手机 ========== */
+        @media (max-width: 700px) {
+            thead th { padding: 9px 3px; font-size: .8em; }
+            thead th:first-child { width: 58px; }
+            .cell { padding: 6px 7px; font-size: .78em; min-height: 64px; }
+            .period-cell .p-name { font-size: .72em; }
+            .period-cell .p-time { display: none; }
+
+            .bottom-inner { gap: 6px; }
+            .save-state { display: none; }
+            button { padding: 9px 12px; font-size: .85em; }
+            .btn-primary { flex: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- 课表直接顶到最上面 -->
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr id="headRow">
+                <th>时间</th>
+                <!-- 星期由 JS 生成 -->
+            </tr>
+        </thead>
+        <tbody id="tbody">
+            <!-- 由 JS 生成 -->
+        </tbody>
+    </table>
+</div>
+
+<!-- 底部工具栏 -->
+<div class="bottom-bar">
+    <div class="bottom-inner">
+        <div class="save-state" id="saveState">
+            <span class="dot"></span><span id="saveText">已自动保存</span>
+        </div>
+        <button class="btn-ghost" onclick="openPreview()">文本</button>
+        <button class="btn-ghost" onclick="window.print()">打印</button>
+        <button class="btn-danger" onclick="clearWeek()">清空</button>
+        <button class="btn-primary" onclick="copyAll()">📋 全复制</button>
+    </div>
+</div>
+
+<!-- 文本预览（可选） -->
+<div class="modal-bg" id="previewModal">
+    <div class="modal">
+        <h3>课表纯文本</h3>
+        <textarea id="previewText" readonly></textarea>
+        <div class="modal-btns">
+            <button class="btn-ghost" onclick="closePreview()">关闭</button>
+            <button class="btn-primary" onclick="copyFromPreview()">📋 复制</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ 配置 ============ */
+var DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+var DAY_FULL = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+
+// 想要调整节次，改这里即可
+var PERIODS = [
+    { name: '10:00' },
+    { name: '10:45' },
+    { name: '11:30' },
+    { name: '12:50' },
+    { name: '13:30' },
+    { name: '14:15' },
+    { name: '15:00' },
+    { name: '15:45' },
+    { name: '16:30' },
+    { name: '18:00' },
+    { name: '18:45' },
+    { name: '19:30' },
+    { name: '20:15' },
+    { name: '21:00' }
+];
+
+var STORAGE_KEY = 'weekSchedule_v1';
+var schedule = loadSchedule();
+
+/* ============ 数据 ============ */
+function loadSchedule() {
+    try {
+        var raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+            var data = JSON.parse(raw);
+            if (Array.isArray(data) && data.length === 7) {
+                // 兼容节次数量变化
+                return data.map(function (row) {
+                    var r = Array.isArray(row) ? row.slice(0, PERIODS.length) : [];
+                    while (r.length < PERIODS.length) r.push('');
+                    return r;
+                });
+            }
+        }
+    } catch (e) {}
+    var empty = [];
+    for (var d = 0; d < DAYS.length; d++) empty.push(new Array(PERIODS.length).fill(''));
+    return empty;
+}
+
+function saveSchedule() {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(schedule));
+        flashSaveState();
+    } catch (e) {
+        showToast('保存失败，内容可能过多', 'err');
+    }
+}
+
+function flashSaveState() {
+    var el = document.getElementById('saveState');
+    if (!el) return;
+    el.classList.add('flash');
+    document.getElementById('saveText').textContent = '已保存';
+    clearTimeout(flashSaveState._t);
+    flashSaveState._t = setTimeout(function () {
+        el.classList.remove('flash');
+        document.getElementById('saveText').textContent = '已自动保存';
+    }, 900);
+}
+
+/* ============ 生成表格 ============ */
+function buildTable() {
+    var todayIdx = (new Date().getDay() + 6) % 7;
+    var dates = getWeekDates();
+
+    var headRow = document.getElementById('headRow');
+    headRow.innerHTML = '<th>时间</th>';
+    DAYS.forEach(function (day, i) {
+        var th = document.createElement('th');
+        if (i === todayIdx) th.style.background = 'linear-gradient(135deg,#dd6b20,#c05621)';
+        th.innerHTML = day + '<span class="sub">' + dates[i] + '</span>';
+        headRow.appendChild(th);
+    });
+
+    var tbody = document.getElementById('tbody');
+    tbody.innerHTML = '';
+
+    PERIODS.forEach(function (p, pi) {
+        var tr = document.createElement('tr');
+
+        var tdTime = document.createElement('td');
+        tdTime.className = 'period-cell';
+        tdTime.innerHTML =
+            '<span class="p-name">' + p.name + '</span>';
+        tr.appendChild(tdTime);
+
+        for (var di = 0; di < DAYS.length; di++) {
+            var td = document.createElement('td');
+            if (di === todayIdx) td.classList.add('today-col');
+
+            var cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.contentEditable = 'true';
+            cell.dataset.day = di;
+            cell.dataset.period = pi;
+            cell.dataset.empty = '＋';
+            cell.textContent = schedule[di][pi] || '';
+            if (schedule[di][pi]) cell.classList.add('has-class');
+
+            bindCell(cell);
+            td.appendChild(cell);
+            tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+    });
+}
+
+/* ============ 单元格交互 ============ */
+function bindCell(cell) {
+    var timer = null;
+
+    cell.addEventListener('input', function () {
+        var di = +cell.dataset.day, pi = +cell.dataset.period;
+        schedule[di][pi] = cell.textContent.trim();
+        cell.classList.toggle('has-class', !!cell.textContent.trim());
+
+        clearTimeout(timer);
+        timer = setTimeout(saveSchedule, 350);
+    });
+
+    // Tab 跳到下一格
+    cell.addEventListener('keydown', function (e) {
+        if (e.key !== 'Tab') return;
+        e.preventDefault();
+        var di = +cell.dataset.day, pi = +cell.dataset.period;
+        if (e.shiftKey) {
+            pi--;
+            if (pi < 0) { pi = PERIODS.length - 1; di--; }
+        } else {
+            pi++;
+            if (pi >= PERIODS.length) { pi = 0; di++; }
+        }
+        if (di < 0) di = 0;
+        if (di >= DAYS.length) di = DAYS.length - 1;
+        var next = document.querySelector('.cell[data-day="' + di + '"][data-period="' + pi + '"]');
+        if (next) next.focus();
+    });
+
+    // 粘贴为纯文本
+    cell.addEventListener('paste', function (e) {
+        e.preventDefault();
+        var text = (e.clipboardData || window.clipboardData).getData('text');
+        document.execCommand('insertText', false, text.replace(/\r/g, ''));
+    });
+
+    cell.addEventListener('blur', saveSchedule);
+}
+
+/* ============ 本周日期 ============ */
+function getWeekDates() {
+    var now = new Date();
+    var monday = new Date(now);
+    monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    var list = [];
+    for (var i = 0; i < 7; i++) {
+        var d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        list.push((d.getMonth() + 1) + '/' + d.getDate());
+    }
+    return list;
+}
+
+/* ============ 生成纯文本 ============ */
+function buildPlainText() {
+    var lines = ['【一周课表】' + new Date().toLocaleDateString('zh-CN'), ''];
+    var hasContent = false;
+
+    DAYS.forEach(function (day, di) {
+        var items = [];
+        PERIODS.forEach(function (p, pi) {
+            var c = (schedule[di][pi] || '').trim();
+            if (c) items.push('  ' + p.name + '：' + c.replace(/\n/g, ' '));
+        });
+        if (items.length) {
+            hasContent = true;
+            lines.push('◆ ' + DAY_FULL[di]);
+            lines = lines.concat(items);
+            lines.push('');
+        }
+    });
+
+    if (!hasContent) return '（课表还是空的，先去填一下吧）';
+    return lines.join('\n').trim();
+}
+
+/* ============ 一键复制（直接复制） ============ */
+function copyAll() {
+    var text = buildPlainText();
+    if (text.indexOf('还是空的') === 0) {
+        showToast('课表还是空的哦', 'err');
+        return;
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+            showToast('✓ 整周课表已复制，可直接粘贴', 'ok');
+        }).catch(function () {
+            fallbackCopy(text);
+        });
+    } else {
+        fallbackCopy(text);
+    }
+}
+
+function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.top = '-9999px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+
+    if (ok) showToast('✓ 整周课表已复制，可直接粘贴', 'ok');
+    else showToast('复制失败，请点"文本"手动复制', 'err');
+}
+
+/* ============ 预览（备用） ============ */
+function openPreview() {
+    document.getElementById('previewText').value = buildPlainText();
+    document.getElementById('previewModal').classList.add('active');
+}
+function closePreview() {
+    document.getElementById('previewModal').classList.remove('active');
+}
+function copyFromPreview() {
+    var ta = document.getElementById('previewText');
+    ta.removeAttribute('readonly');
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.setAttribute('readonly', 'readonly');
+
+    if (ok) { showToast('✓ 已复制', 'ok'); closePreview(); }
+    else showToast('请手动 Ctrl+C 复制', 'err');
+}
+
+/* ============ 清空 ============ */
+function clearWeek() {
+    if (!confirm('确定清空整周课表吗？此操作不可恢复。')) return;
+    for (var d = 0; d < DAYS.length; d++)
+        for (var p = 0; p < PERIODS.length; p++) schedule[d][p] = '';
+    saveSchedule();
+    buildTable();
+    showToast('课表已清空', 'ok');
+}
+
+/* ============ Toast ============ */
+var toastTimer = null;
+function showToast(msg, type) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + (type || '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.className = 'toast'; }, 2400);
+}
+
+/* ============ 启动 ============ */
+document.getElementById('previewModal').addEventListener('click', function (e) {
+    if (e.target === this) closePreview();
+});
+
+buildTable();
+</script>
+
+</body>
+</html>
